@@ -1,1 +1,8 @@
+# Ignore compiled python files and __pycache__
+Cybersecurity Toolkit/modules/__pycache__/
+**/__pycache__/
+*.pyc
+
+# Test output
+tests/check_output.json
 /.qodo
