@@ -2,13 +2,15 @@ import os
 import sys
 import threading
 import time
+import subprocess
+import re
 import customtkinter as ctk
 from tkinter import filedialog
 
 # Try to import scapy
 SCAPY_AVAILABLE = True
 try:
-    from scapy.all import sniff, wrpcap
+    from scapy.all import sniff, wrpcap, AsyncSniffer, get_if_list
 except Exception:
     SCAPY_AVAILABLE = False
 
@@ -42,8 +44,52 @@ class PacketSnifferGUI(ctk.CTk):
         iface_values = []
         if SCAPY_AVAILABLE:
             try:
-                from scapy.all import get_if_list
-                iface_values = get_if_list()
+                # Prefer Windows-aware listing if available
+                try:
+                    from scapy.all import get_windows_if_list
+                    win_ifaces = get_windows_if_list()
+                    # get_windows_if_list returns a list of dicts with 'name' and 'description' and 'guid'
+                    iface_values = [f"{i.get('name')} ({i.get('description')})" if i.get('description') else i.get('name') for i in win_ifaces]
+                except Exception:
+                    # Fallback to generic list and attempt to map GUIDs to friendly names
+                    from scapy.all import get_if_list
+                    raw_ifaces = get_if_list()
+                    iface_values = []
+                    # Try to map NPF_{GUID} to friendly names via wmic (Windows). If not available, keep raw names
+                    guid_pattern = re.compile(r"NPF_\{([0-9A-Fa-f\-]+)\}")
+                    try:
+                        # Query WMI for network adapters (GUID and NetConnectionID/Name)
+                        wmic = subprocess.run(["wmic", "nic", "get", "GUID,NetConnectionID,Name"], capture_output=True, text=True, timeout=3)
+                        w_out = wmic.stdout if wmic.returncode == 0 else ''
+                        # Parse lines to build a GUID->friendly map
+                        guid_map = {}
+                        for line in w_out.splitlines():
+                            parts = [p.strip() for p in line.split(None, 2)]
+                            if len(parts) >= 1:
+                                # heuristics: GUID is first or last; look for GUID pattern
+                                m = re.search(r"\{[0-9A-Fa-f\-]+\}", line)
+                                if m:
+                                    guid = m.group(0).strip('{}')
+                                    # attempt to extract NetConnectionID
+                                    nid = ''
+                                    # crude split by two spaces
+                                    cols = [c.strip() for c in line.split('  ') if c.strip()]
+                                    if len(cols) >= 2:
+                                        nid = cols[0]
+                                    guid_map[guid.upper()] = nid or line.strip()
+                        for iface in raw_ifaces:
+                            m = guid_pattern.search(iface)
+                            if m:
+                                g = m.group(1).upper()
+                                friendly = guid_map.get(g)
+                                if friendly:
+                                    iface_values.append(f"{iface} ({friendly})")
+                                else:
+                                    iface_values.append(iface)
+                            else:
+                                iface_values.append(iface)
+                    except Exception:
+                        iface_values = raw_ifaces
             except Exception:
                 iface_values = []
 
@@ -71,21 +117,58 @@ class PacketSnifferGUI(ctk.CTk):
         self.export_btn = ctk.CTkButton(self.controls_frame, text="Export PCAP", command=self.export_pcap)
         self.export_btn.grid(row=0, column=6, padx=6, pady=6)
 
-        self.packets_list = ctk.CTkTextbox(self.scrollable_frame, width=740, height=360, font=("Consolas", 11))
+        self.packets_list = ctk.CTkTextbox(self.scrollable_frame, width=740, height=260, font=("Consolas", 11))
         self.packets_list.pack(padx=20, pady=10)
         self.packets_list.configure(state="disabled")
+
+        # Packet detail box (click a packet line above to view full packet.show() dump)
+        self.detail_box = ctk.CTkTextbox(self.scrollable_frame, width=740, height=120, font=("Consolas", 11))
+        self.detail_box.pack(padx=20, pady=(0, 10))
+        self.detail_box.configure(state="disabled")
+        # Bind mouse click to show details
+        try:
+            self.packets_list.bind("<ButtonRelease-1>", self.on_packet_click)
+        except Exception:
+            pass
 
         self.status_label = ctk.CTkLabel(self.scrollable_frame, text="Status: Idle")
         self.status_label.pack(pady=(0, 12))
 
-        self.capturing = False
-        self.captured_packets = []
-        self.sniff_thread = None
+    self.capturing = False
+    self.captured_packets = []
+    self.sniffer = None
 
     def append_line(self, line):
-        self.packets_list.configure(state="normal")
-        self.packets_list.insert(ctk.END, line + "\n")
-        self.packets_list.configure(state="disabled")
+        # Ensure UI updates happen on the main thread
+        def _append():
+            self.packets_list.configure(state="normal")
+            self.packets_list.insert(ctk.END, line + "\n")
+            self.packets_list.see(ctk.END)
+            self.packets_list.configure(state="disabled")
+        try:
+            self.after(0, _append)
+        except Exception:
+            _append()
+
+    def on_packet_click(self, event):
+        try:
+            idx = self.packets_list.index(f"@{event.x},{event.y}")
+            line_no = int(idx.split('.')[0]) - 1
+            if 0 <= line_no < len(self.captured_packets):
+                pkt = self.captured_packets[line_no]
+                try:
+                    dump = pkt.show(dump=True)
+                except Exception:
+                    dump = repr(pkt)
+                self.show_packet_details(dump)
+        except Exception:
+            pass
+
+    def show_packet_details(self, text):
+        self.detail_box.configure(state="normal")
+        self.detail_box.delete("1.0", ctk.END)
+        self.detail_box.insert(ctk.END, text)
+        self.detail_box.configure(state="disabled")
 
     def start_capture(self):
         if not SCAPY_AVAILABLE:
@@ -107,17 +190,28 @@ class PacketSnifferGUI(ctk.CTk):
                 iface = None
         filt = self.filter_entry.get().strip()
         bpf = None
-        if filt:
-            if filt.lower() in ('tcp', 'udp', 'icmp'):
-                bpf = filt.lower()
-        self.sniff_thread = threading.Thread(target=self._sniff, args=(iface, bpf), daemon=True)
-        self.sniff_thread.start()
+        if filt and filt.lower() in ('tcp', 'udp', 'icmp'):
+            bpf = filt.lower()
+
+        # Use AsyncSniffer for reliable start/stop
+        try:
+            def _pktcb(pkt):
+                summary = pkt.summary()
+                self.captured_packets.append(pkt)
+                self.append_line(summary)
+
+            self.sniffer = AsyncSniffer(prn=_pktcb, iface=iface, filter=bpf, store=False)
+            self.sniffer.start()
+        except Exception as e:
+            self.append_line(f"Failed to start capture: {e}")
+            self.capturing = False
+            self.status_label.configure(text="Status: Idle")
 
     def _sniff(self, iface, bpf):
+        # kept for backward compatibility if called directly; prefer AsyncSniffer
         def _pktcb(pkt):
             summary = pkt.summary()
             self.captured_packets.append(pkt)
-            # thread-safe append
             self.append_line(summary)
 
         try:
@@ -129,17 +223,26 @@ class PacketSnifferGUI(ctk.CTk):
             self.status_label.configure(text="Status: Idle")
 
     def stop_capture(self):
-        # scapy sniff runs until killed; simplest approach is to set capturing False and rely on scapy stop filter
-        # a portable way is to use stop_filter in sniff, but for now we inform the user to press Stop and we will try to terminate thread.
         if not SCAPY_AVAILABLE:
             return
         if not self.capturing:
             return
-        # monkey: raises in thread not trivial; as a simple workaround, set capturing flag and inform user
-        self.capturing = False
-        self.status_label.configure(text="Status: Stopping... (may take a moment)")
-        # scapy doesn't provide a direct stop; let user know
-        self.append_line("Stop requested. Capture thread may still run until kernel-level sniff returns.")
+        self.status_label.configure(text="Status: Stopping...")
+        try:
+            if self.sniffer:
+                # AsyncSniffer provides stop()
+                self.sniffer.stop()
+                try:
+                    self.sniffer.join(timeout=2)
+                except Exception:
+                    pass
+                self.sniffer = None
+            self.capturing = False
+            self.append_line("Capture stopped.")
+            self.status_label.configure(text="Status: Idle")
+        except Exception as e:
+            self.append_line(f"Error stopping capture: {e}")
+            self.status_label.configure(text="Status: Idle")
 
     def export_pcap(self):
         if not self.captured_packets:
