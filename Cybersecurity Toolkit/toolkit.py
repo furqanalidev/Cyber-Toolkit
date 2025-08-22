@@ -3,6 +3,8 @@ Cybersecurity Toolkit - Main Entry Point (GUI)
 """
 import sys
 import os
+# Ensure the current package directory is on sys.path so `import modules` works
+sys.path.insert(0, os.path.dirname(__file__))
 import customtkinter as ctk
 from modules import port_scanner, vuln_scanner, packet_sniffer, encryption, web_tools, ml_security
 
