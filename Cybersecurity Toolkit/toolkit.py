@@ -6,7 +6,7 @@ import os
 # Ensure the current package directory is on sys.path so `import modules` works
 sys.path.insert(0, os.path.dirname(__file__))
 import customtkinter as ctk
-from modules import port_scanner, vuln_scanner, packet_sniffer, encryption, web_tools, ml_security
+from modules import port_scanner, vuln_scanner, packet_sniffer, encryption, web_tools, ml_security, brute_force_demo
 
 
 class ToolkitGUI(ctk.CTk):
@@ -38,6 +38,7 @@ class ToolkitGUI(ctk.CTk):
             ("Port Scanner", port_scanner.run),
             ("Vulnerability Scanner", vuln_scanner.run),
             ("Packet Sniffer", packet_sniffer.run),
+            ("Brute-force Demo", brute_force_demo.run),
             ("Encryption/Decryption", encryption.run),
             ("Web Tools", web_tools.run),
             ("ML Security", ml_security.run)
