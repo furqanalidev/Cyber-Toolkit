@@ -1,5 +1,5 @@
 # Cybersecurity Toolkit dependencies
 scapy
 requests
-cryptography
 scikit-learn
+numpy
