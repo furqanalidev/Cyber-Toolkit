@@ -3,8 +3,17 @@ Port Scanner Module - GUI Version
 """
 import sys
 import os
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../utils')))
-from portscanner_lib import scan_ports
+# Use package import so static analyzers (Pylance) can resolve the module.
+try:
+    # Preferred import path for editors and when package is installed
+    from core.portscanner_lib import scan_ports
+except Exception:
+    # Fallback at runtime when running from source tree
+    import sys, pathlib
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from core.portscanner_lib import scan_ports
 import customtkinter as ctk
 import threading
 

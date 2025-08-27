@@ -11,8 +11,14 @@ import threading
 import customtkinter as ctk
 
 # import shared port scanner
-sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '../../utils')))
-from portscanner_lib import scan_ports
+try:
+    from core.portscanner_lib import scan_ports
+except Exception:
+    import sys, pathlib
+    repo_root = pathlib.Path(__file__).resolve().parents[1]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from core.portscanner_lib import scan_ports
 import requests
 
 
