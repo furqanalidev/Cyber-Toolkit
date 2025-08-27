@@ -2,3 +2,4 @@
 scapy
 requests
 cryptography
+scikit-learn
