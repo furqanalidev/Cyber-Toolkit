@@ -3,3 +3,4 @@ scapy
 requests
 scikit-learn
 numpy
+cryptography

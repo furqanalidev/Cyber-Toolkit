@@ -1,35 +1,55 @@
-"""encryption.py
+"""Encryption/Decryption GUI (educational)
 
-GUI for simple, educational encryption and hashing demos.
+Provides safe, local demonstrations:
+- SHA-256 hashing
+- PBKDF2 (password-based key derivation) demo
+- Symmetric encryption/decryption using Fernet (if cryptography is installed)
 
-Features:
-- Generate / load / save a Fernet symmetric key
-- Encrypt / Decrypt text using the key
-- Compute SHA-256 hash of input text (defensive/educational)
-
-This module is for local, educational purposes only.
+All operations are local-only and intended for learning.
 """
 from __future__ import annotations
-import os
-import sys
-import base64
 import hashlib
+import base64
+import os
 import threading
 import customtkinter as ctk
-from tkinter import filedialog
+from tkinter import messagebox
 
-# Try importing cryptography; GUI will show a warning if missing
-CRYPTO_AVAILABLE = True
+# Optional dependency: cryptography (Fernet)
+FERNET_AVAILABLE = True
 try:
     from cryptography.fernet import Fernet
 except Exception:
-    CRYPTO_AVAILABLE = False
+    FERNET_AVAILABLE = False
+
+
+def sha256_hex(text: str) -> str:
+    return hashlib.sha256(text.encode('utf-8')).hexdigest()
+
+
+def pbkdf2_hex(password: str, salt: str, iterations: int = 100_000, dklen: int = 32) -> str:
+    dk = hashlib.pbkdf2_hmac('sha256', password.encode('utf-8'), salt.encode('utf-8'), iterations, dklen=dklen)
+    return dk.hex()
+
+
+def generate_fernet_key() -> bytes:
+    return Fernet.generate_key()
+
+
+def encrypt_with_fernet(key: bytes, plaintext: str) -> bytes:
+    f = Fernet(key)
+    return f.encrypt(plaintext.encode('utf-8'))
+
+
+def decrypt_with_fernet(key: bytes, token: bytes) -> str:
+    f = Fernet(key)
+    return f.decrypt(token).decode('utf-8')
 
 
 class EncryptionGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Encryption / Decryption")
+        self.title("Encryption/Decryption")
         self.resizable(True, True)
         window_width, window_height = 800, 600
         screen_width = self.winfo_screenwidth()
@@ -44,181 +64,125 @@ class EncryptionGUI(ctk.CTk):
         self.scrollable_frame.pack(fill="both", expand=True)
 
         self.header = ctk.CTkLabel(self.scrollable_frame, text="Encryption / Decryption", font=("Arial", 24, "bold"))
-        self.header.pack(pady=(20, 8))
+        self.header.pack(pady=(18, 8))
 
-        # Key controls
-        key_frame = ctk.CTkFrame(self.scrollable_frame)
-        key_frame.pack(fill="x", padx=20, pady=(0, 12))
+        # Hashing frame
+        hframe = ctk.CTkFrame(self.scrollable_frame)
+        hframe.pack(fill="x", padx=20, pady=(6, 12))
 
-        self.key_label = ctk.CTkLabel(key_frame, text="Key (base64):")
-        self.key_label.grid(row=0, column=0, sticky="w", padx=6, pady=6)
+        self.input_label = ctk.CTkLabel(hframe, text="Input text:")
+        self.input_label.grid(row=0, column=0, padx=6, pady=6)
+        self.input_entry = ctk.CTkEntry(hframe, width=420)
+        self.input_entry.grid(row=0, column=1, padx=6, pady=6)
 
-        self.key_entry = ctk.CTkEntry(key_frame, width=520)
-        self.key_entry.grid(row=0, column=1, padx=6, pady=6)
+        self.hash_btn = ctk.CTkButton(hframe, text="Compute SHA-256", command=self.do_hash)
+        self.hash_btn.grid(row=0, column=2, padx=6, pady=6)
 
-        self.gen_key_btn = ctk.CTkButton(key_frame, text="Generate Key", command=self.generate_key)
-        self.gen_key_btn.grid(row=0, column=2, padx=6, pady=6)
+        self.hash_result = ctk.CTkEntry(hframe, width=740)
+        self.hash_result.grid(row=1, column=0, columnspan=3, padx=6, pady=(6, 12))
 
-        self.load_key_btn = ctk.CTkButton(key_frame, text="Load Key", command=self.load_key)
-        self.load_key_btn.grid(row=1, column=1, sticky="w", padx=6, pady=6)
+        # PBKDF2 frame
+        pframe = ctk.CTkFrame(self.scrollable_frame)
+        pframe.pack(fill="x", padx=20, pady=(0, 12))
 
-        self.save_key_btn = ctk.CTkButton(key_frame, text="Save Key", command=self.save_key)
-        self.save_key_btn.grid(row=1, column=2, padx=6, pady=6)
+        self.pw_label = ctk.CTkLabel(pframe, text="Password:")
+        self.pw_label.grid(row=0, column=0, padx=6, pady=6)
+        self.pw_entry = ctk.CTkEntry(pframe, width=220, placeholder_text="password")
+        self.pw_entry.grid(row=0, column=1, padx=6, pady=6)
 
-        # Text areas for encrypt/decrypt
-        text_frame = ctk.CTkFrame(self.scrollable_frame)
-        text_frame.pack(fill="both", padx=20, pady=(0, 12), expand=True)
+        self.salt_label = ctk.CTkLabel(pframe, text="Salt:")
+        self.salt_label.grid(row=0, column=2, padx=6, pady=6)
+        self.salt_entry = ctk.CTkEntry(pframe, width=220, placeholder_text="salt")
+        self.salt_entry.insert(0, os.urandom(8).hex())
+        self.salt_entry.grid(row=0, column=3, padx=6, pady=6)
 
-        self.plain_label = ctk.CTkLabel(text_frame, text="Plaintext")
-        self.plain_label.grid(row=0, column=0, padx=6, pady=6, sticky="w")
-        self.cipher_label = ctk.CTkLabel(text_frame, text="Ciphertext (base64)")
-        self.cipher_label.grid(row=0, column=1, padx=6, pady=6, sticky="w")
+        self.pbkdf2_btn = ctk.CTkButton(pframe, text="Derive PBKDF2", command=self.do_pbkdf2)
+        self.pbkdf2_btn.grid(row=0, column=4, padx=6, pady=6)
 
-        self.plain_text = ctk.CTkTextbox(text_frame, width=340, height=200, font=("Consolas", 12))
-        self.plain_text.grid(row=1, column=0, padx=6, pady=6)
+        self.pbkdf2_result = ctk.CTkEntry(pframe, width=740)
+        self.pbkdf2_result.grid(row=1, column=0, columnspan=5, padx=6, pady=(6, 12))
 
-        self.cipher_text = ctk.CTkTextbox(text_frame, width=340, height=200, font=("Consolas", 12))
-        self.cipher_text.grid(row=1, column=1, padx=6, pady=6)
+        # Fernet symmetric demo
+        fframe = ctk.CTkFrame(self.scrollable_frame)
+        fframe.pack(fill="x", padx=20, pady=(0, 12))
 
-        btn_frame = ctk.CTkFrame(self.scrollable_frame)
-        btn_frame.pack(padx=20, pady=(0, 12), fill="x")
+        self.fernet_note = ctk.CTkLabel(fframe, text="Symmetric encryption (Fernet) - requires 'cryptography' package.")
+        self.fernet_note.grid(row=0, column=0, columnspan=3, padx=6, pady=6)
 
-        self.encrypt_btn = ctk.CTkButton(btn_frame, text="Encrypt →", width=140, command=self.encrypt_text)
-        self.encrypt_btn.pack(side="left", padx=6)
+        self.key_entry = ctk.CTkEntry(fframe, width=420, placeholder_text="base64 key (generated)")
+        self.key_entry.grid(row=1, column=0, padx=6, pady=6)
 
-        self.decrypt_btn = ctk.CTkButton(btn_frame, text="← Decrypt", width=140, command=self.decrypt_text)
-        self.decrypt_btn.pack(side="left", padx=6)
+        self.gen_key_btn = ctk.CTkButton(fframe, text="Generate Key", command=self.generate_key)
+        self.gen_key_btn.grid(row=1, column=1, padx=6, pady=6)
 
-        # Hashing area
-        hash_frame = ctk.CTkFrame(self.scrollable_frame)
-        hash_frame.pack(fill="x", padx=20, pady=(0, 12))
+        self.encrypt_btn = ctk.CTkButton(fframe, text="Encrypt", command=self.encrypt_text)
+        self.encrypt_btn.grid(row=1, column=2, padx=6, pady=6)
 
-        self.hash_label = ctk.CTkLabel(hash_frame, text="SHA-256 Hash of input text (educational)")
-        self.hash_label.pack(anchor="w", padx=6, pady=6)
+        self.decrypt_btn = ctk.CTkButton(fframe, text="Decrypt", command=self.decrypt_text)
+        self.decrypt_btn.grid(row=1, column=3, padx=6, pady=6)
 
-        self.hash_box = ctk.CTkTextbox(hash_frame, width=740, height=80, font=("Consolas", 12))
-        self.hash_box.pack(padx=6, pady=6)
-        self.hash_box.configure(state="disabled")
+        self.fernet_result = ctk.CTkEntry(fframe, width=740)
+        self.fernet_result.grid(row=2, column=0, columnspan=4, padx=6, pady=(6, 12))
 
-        self.hash_btn = ctk.CTkButton(hash_frame, text="Compute Hash", command=self.compute_hash)
-        self.hash_btn.pack(padx=6, pady=6, anchor="e")
-
-        # Status
-        self.status = ctk.CTkLabel(self.scrollable_frame, text="Status: Ready")
-        self.status.pack(pady=(6, 12))
-
-        if not CRYPTO_AVAILABLE:
-            # Disable crypto buttons and inform user
+        if not FERNET_AVAILABLE:
             self.gen_key_btn.configure(state="disabled")
-            self.load_key_btn.configure(state="disabled")
-            self.save_key_btn.configure(state="disabled")
             self.encrypt_btn.configure(state="disabled")
             self.decrypt_btn.configure(state="disabled")
-            self.append_status("cryptography package not installed — install via requirements.txt to enable encryption features")
+            self.fernet_note.configure(text="cryptography not installed — Fernet disabled. Install with: pip install cryptography")
 
-    def append_status(self, text: str):
-        self.status.configure(text=f"Status: {text}")
+    def do_hash(self):
+        txt = self.input_entry.get() or ""
+        h = sha256_hex(txt)
+        self.hash_result.delete(0, ctk.END)
+        self.hash_result.insert(0, h)
+
+    def do_pbkdf2(self):
+        pwd = self.pw_entry.get() or ""
+        salt = self.salt_entry.get() or ""
+        # run in thread to avoid UI blocking
+        def _work():
+            h = pbkdf2_hex(pwd, salt)
+            self.pbkdf2_result.delete(0, ctk.END)
+            self.pbkdf2_result.insert(0, h)
+        threading.Thread(target=_work, daemon=True).start()
 
     def generate_key(self):
-        if not CRYPTO_AVAILABLE:
+        if not FERNET_AVAILABLE:
+            messagebox.showinfo("Unavailable", "cryptography not installed")
             return
-        key = Fernet.generate_key()
+        key = generate_fernet_key()
         self.key_entry.delete(0, ctk.END)
-        self.key_entry.insert(0, key.decode())
-        self.append_status("New key generated")
-
-    def load_key(self):
-        path = filedialog.askopenfilename(filetypes=[("Key files", "*.key"), ("All files", "*")])
-        if not path:
-            return
-        try:
-            with open(path, 'rb') as f:
-                data = f.read().strip()
-                # accept raw 32-byte or base64
-                try:
-                    decoded = data.decode()
-                except Exception:
-                    decoded = base64.b64encode(data).decode()
-                self.key_entry.delete(0, ctk.END)
-                self.key_entry.insert(0, decoded)
-                self.append_status(f"Key loaded from {os.path.basename(path)}")
-        except Exception as e:
-            self.append_status(f"Failed to load key: {e}")
-
-    def save_key(self):
-        path = filedialog.asksaveasfilename(defaultextension='.key', filetypes=[("Key files","*.key"),("All files","*")])
-        if not path:
-            return
-        try:
-            key = self.key_entry.get().strip().encode()
-            with open(path, 'wb') as f:
-                f.write(key)
-            self.append_status(f"Key saved to {os.path.basename(path)}")
-        except Exception as e:
-            self.append_status(f"Failed to save key: {e}")
+        self.key_entry.insert(0, key.decode('utf-8'))
 
     def encrypt_text(self):
-        if not CRYPTO_AVAILABLE:
+        if not FERNET_AVAILABLE:
             return
-        key = self.key_entry.get().strip().encode()
+        key_b64 = self.key_entry.get().strip()
+        if not key_b64:
+            messagebox.showinfo("Key missing", "Generate or paste a base64 Fernet key first")
+            return
         try:
-            f = Fernet(key)
-        except Exception:
-            self.append_status("Invalid key format")
-            return
-        plain = self.plain_text.get("1.0", ctk.END).rstrip('\n')
-        if not plain:
-            self.append_status("No plaintext to encrypt")
-            return
-
-        def _work():
-            try:
-                token = f.encrypt(plain.encode())
-                b64 = token.decode()
-                self.cipher_text.delete("1.0", ctk.END)
-                self.cipher_text.insert(ctk.END, b64)
-                self.append_status("Encrypted")
-            except Exception as e:
-                self.append_status(f"Encryption failed: {e}")
-
-        threading.Thread(target=_work, daemon=True).start()
+            token = encrypt_with_fernet(key_b64.encode('utf-8'), self.input_entry.get() or "")
+            self.fernet_result.delete(0, ctk.END)
+            self.fernet_result.insert(0, token.decode('utf-8'))
+        except Exception as e:
+            messagebox.showerror("Encrypt failed", str(e))
 
     def decrypt_text(self):
-        if not CRYPTO_AVAILABLE:
+        if not FERNET_AVAILABLE:
             return
-        key = self.key_entry.get().strip().encode()
+        key_b64 = self.key_entry.get().strip()
+        token_b64 = self.fernet_result.get().strip()
+        if not key_b64 or not token_b64:
+            messagebox.showinfo("Missing data", "Ensure key and token are provided")
+            return
         try:
-            f = Fernet(key)
-        except Exception:
-            self.append_status("Invalid key format")
-            return
-        token = self.cipher_text.get("1.0", ctk.END).strip()
-        if not token:
-            self.append_status("No ciphertext to decrypt")
-            return
-
-        def _work():
-            try:
-                plain = f.decrypt(token.encode()).decode()
-                self.plain_text.delete("1.0", ctk.END)
-                self.plain_text.insert(ctk.END, plain)
-                self.append_status("Decrypted")
-            except Exception as e:
-                self.append_status(f"Decryption failed: {e}")
-
-        threading.Thread(target=_work, daemon=True).start()
-
-    def compute_hash(self):
-        text = self.plain_text.get("1.0", ctk.END).rstrip('\n')
-        if not text:
-            self.append_status("No text to hash")
-            return
-        h = hashlib.sha256(text.encode()).hexdigest()
-        self.hash_box.configure(state="normal")
-        self.hash_box.delete("1.0", ctk.END)
-        self.hash_box.insert(ctk.END, h)
-        self.hash_box.configure(state="disabled")
-        self.append_status("Hash computed")
+            plaintext = decrypt_with_fernet(key_b64.encode('utf-8'), token_b64.encode('utf-8'))
+            # show plaintext in the input entry for convenience
+            self.input_entry.delete(0, ctk.END)
+            self.input_entry.insert(0, plaintext)
+        except Exception as e:
+            messagebox.showerror("Decrypt failed", str(e))
 
 
 def run(on_close=None):
