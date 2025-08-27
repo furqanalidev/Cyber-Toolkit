@@ -1,3 +1,4 @@
 # Cybersecurity Toolkit dependencies
 scapy
 requests
+cryptography
