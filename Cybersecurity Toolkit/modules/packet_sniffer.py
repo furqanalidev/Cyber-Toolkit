@@ -134,9 +134,9 @@ class PacketSnifferGUI(ctk.CTk):
         self.status_label = ctk.CTkLabel(self.scrollable_frame, text="Status: Idle")
         self.status_label.pack(pady=(0, 12))
 
-    self.capturing = False
-    self.captured_packets = []
-    self.sniffer = None
+        self.capturing = False
+        self.captured_packets = []
+        self.sniffer = None
 
     def append_line(self, line):
         # Ensure UI updates happen on the main thread

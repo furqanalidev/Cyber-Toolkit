@@ -1,8 +1,15 @@
-def run():
-    print("\n--- Web Tools ---")
-    print("Feature coming soon!")
+"""Web Tools GUI
 
+Safe, non-intrusive web utilities: fetch HTTP headers, retrieve robots.txt,
+check URL status and timing. All operations use `requests` with timeouts.
+"""
+from __future__ import annotations
+import threading
+import time
+import requests
 import customtkinter as ctk
+
+
 class WebToolsGUI(ctk.CTk):
     def __init__(self):
         super().__init__()
@@ -21,10 +28,109 @@ class WebToolsGUI(ctk.CTk):
         self.scrollable_frame.pack(fill="both", expand=True)
 
         self.header = ctk.CTkLabel(self.scrollable_frame, text="Web Tools", font=("Arial", 28, "bold"))
-        self.header.pack(pady=(30, 10))
+        self.header.pack(pady=(18, 8))
 
-        self.desc = ctk.CTkLabel(self.scrollable_frame, text="Feature coming soon!", font=("Arial", 16))
-        self.desc.pack(pady=(0, 30))
+        # Input
+        input_frame = ctk.CTkFrame(self.scrollable_frame)
+        input_frame.pack(fill="x", padx=20, pady=(6, 10))
+
+        self.url_entry = ctk.CTkEntry(input_frame, width=520, placeholder_text="https://example.com")
+        self.url_entry.grid(row=0, column=0, padx=6, pady=6)
+
+        self.headers_btn = ctk.CTkButton(input_frame, text="Fetch Headers", command=self.fetch_headers)
+        self.headers_btn.grid(row=0, column=1, padx=6, pady=6)
+
+        self.robots_btn = ctk.CTkButton(input_frame, text="Check robots.txt", command=self.fetch_robots)
+        self.robots_btn.grid(row=0, column=2, padx=6, pady=6)
+
+        # Status checker (multiple URLs)
+        self.urls_entry = ctk.CTkEntry(input_frame, width=520, placeholder_text="comma-separated URLs for status check")
+        self.urls_entry.grid(row=1, column=0, columnspan=2, padx=6, pady=6)
+        self.urls_entry.insert(0, "https://example.com, https://httpbin.org/status/200")
+        self.urls_btn = ctk.CTkButton(input_frame, text="Check URLs", command=self.check_urls)
+        self.urls_btn.grid(row=1, column=2, padx=6, pady=6)
+
+        # Output box
+        self.output = ctk.CTkTextbox(self.scrollable_frame, width=740, height=360, font=("Consolas", 11))
+        self.output.pack(padx=20, pady=(6, 18))
+        self.output.configure(state="disabled")
+
+    def append(self, text: str):
+        def _add():
+            self.output.configure(state="normal")
+            self.output.insert(ctk.END, text + "\n")
+            self.output.see(ctk.END)
+            self.output.configure(state="disabled")
+        try:
+            self.after(0, _add)
+        except Exception:
+            _add()
+
+    def fetch_headers(self):
+        url = self.url_entry.get().strip()
+        if not url:
+            self.append("Please enter a URL")
+            return
+
+        def _work():
+            self.append(f"Fetching headers for {url}...")
+            try:
+                start = time.time()
+                r = requests.head(url, timeout=6, allow_redirects=True)
+                elapsed = time.time() - start
+                self.append(f"Status: {r.status_code} ({elapsed:.2f}s)")
+                for k, v in r.headers.items():
+                    self.append(f"{k}: {v}")
+            except Exception as e:
+                self.append(f"Error fetching headers: {e}")
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def fetch_robots(self):
+        url = self.url_entry.get().strip()
+        if not url:
+            self.append("Please enter a URL")
+            return
+        if url.endswith('/'):
+            base = url.rstrip('/')
+        else:
+            base = url
+
+        def _work():
+            robots_url = base + '/robots.txt'
+            self.append(f"Checking {robots_url} ...")
+            try:
+                r = requests.get(robots_url, timeout=6)
+                self.append(f"Status: {r.status_code}")
+                if r.status_code == 200:
+                    self.append(r.text[:200] + ('...' if len(r.text) > 200 else ''))
+                else:
+                    self.append('robots.txt not found or inaccessible')
+            except Exception as e:
+                self.append(f"Error fetching robots.txt: {e}")
+
+        threading.Thread(target=_work, daemon=True).start()
+
+    def check_urls(self):
+        raw = self.urls_entry.get().strip()
+        if not raw:
+            self.append('Please enter one or more URLs (comma-separated)')
+            return
+        urls = [u.strip() for u in raw.split(',') if u.strip()]
+
+        def _work():
+            for u in urls:
+                self.append(f"Checking {u} ...")
+                try:
+                    start = time.time()
+                    r = requests.get(u, timeout=6)
+                    elapsed = time.time() - start
+                    self.append(f"{u} -> {r.status_code} ({elapsed:.2f}s)")
+                except Exception as e:
+                    self.append(f"{u} -> error: {e}")
+
+        threading.Thread(target=_work, daemon=True).start()
+
 
 def run(on_close=None):
     app = WebToolsGUI()
