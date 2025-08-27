@@ -1,0 +1,162 @@
+Cybersecurity Toolkit — Full Usage & Project Guide
+
+Overview
+--------
+This repository is a learning-focused Cybersecurity Toolkit implemented in Python with a graphical UI (CustomTkinter). The toolkit collects several safe, educational tools: port scanner, vulnerability scanner (non-intrusive HTTP/TLS checks), packet sniffer (Scapy-based), encryption demos, a safe brute-force demo, web utilities, and ML-security demos.
+
+Important: All tools are intended for education, research, and defensive testing on systems/networks you own or are authorized to test. Do not perform active attacks against third-party systems without permission.
+
+Repo layout (important files)
+-----------------------------
+- toolkit.py                 - Main CTk GUI launcher (single-window dashboard + module container)
+- modules/                   - Folder with per-feature modules
+  - port_scanner.py          - Port scanner GUI (calls utils.portscanner_lib)
+  - vuln_scanner.py          - Safe web/vulnerability checks (headers, robots.txt, TLS expiry)
+  - packet_sniffer.py       - Packet sniffer GUI (uses Scapy AsyncSniffer when available)
+  - encryption.py           - Hashing, PBKDF2, and optional Fernet encryption demo
+  - web_tools.py            - HTTP header inspector, robots.txt, URL status checker
+  - brute_force_demo.py     - Safe, local-only brute-force educational demo (CTk UI)
+  - ml_security.py         - Small ML demo + adversarial-noise educational examples
+- core/                      - Low-level helpers and utilities
+  - portscanner_lib.py      - Central, fast port-scanning utility used by port_scanner module
+- requirements.txt           - Suggested dependencies: scapy, requests, scikit-learn, numpy, cryptography
+- tests/                     - Basic run checks and small test harness (if present)
+
+Python environment & requirements
+---------------------------------
+Recommended Python: 3.8+ (tested on 3.10+). The repo was developed on Windows; cross-platform behavior depends on Scapy and packet capture support.
+
+Install dependencies (PowerShell example):
+
+```powershell
+# create a venv
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -r "Cybersecurity Toolkit\requirements.txt"
+```
+
+Optional system dependencies:
+- Windows Npcap (for Scapy L2 capture). Install from https://nmap.org/npcap/ if you want live capture.
+
+High-level run instructions
+---------------------------
+From the project root (contains `toolkit.py`):
+
+```powershell
+# Ensure the working dir is the project root
+python "Cybersecurity Toolkit\toolkit.py"
+```
+
+This launches a single-window toolkit with three main pages:
+- Main Menu: launcher buttons for modules and Dashboard
+- Dashboard: system & network summary, Quick ML demo, CVE feed, and module summaries
+- Module page: shows selected module; you can either "Open (previous behavior)" which hides the main UI and opens the module in its own window (legacy), or "Embed (if supported)" which renders the module inside the toolkit window.
+
+Module API conventions
+----------------------
+To support both legacy and embedded workflows, modules follow two optional contracts:
+1) Legacy API (existing): run(on_close=None)
+   - Called by the toolkit when the user chooses "Open (previous behavior)". The toolkit will call module.run(on_close=callback) to hide/show main window.
+2) Embedding API (new, optional): create_frame(parent, on_close=None)
+   - If present, the toolkit enables the "Embed" button and will call create_frame(self.module_frame, on_close=...) to render the module inline.
+
+If you are adding or updating modules and want them embeddable, implement `create_frame(parent, on_close=None)` that returns a frame (tk widget) which the toolkit can pack.
+
+Module summaries on Dashboard
+-----------------------------
+The Dashboard provides quick information and lightweight AI demos:
+- System summary (OS, Python version)
+- Local hostnames and IP addresses (basic gethostbyname_ex)
+- Quick ML demo: synthetic classification (uses scikit-learn), shows accuracy
+- CVE feed: best-effort fetch from a public feed (optional, may be rate-limited)
+
+Development notes & extending the project
+----------------------------------------
+1. Making modules embeddable
+   - Edit a module (e.g., `modules/web_tools.py`) and add a function:
+
+```python
+def create_frame(parent, on_close=None):
+    # Construct UI inside `parent` (CTkFrame) and return a frame widget
+    frame = ctk.CTkFrame(parent)
+    # ... build widgets inside frame ...
+    return frame
+```
+
+   - Keep existing `run(on_close=None)` as backward-compatible behavior.
+
+2. Packet sniffer on Windows
+   - Scapy requires Npcap for raw packet capture. If Npcap is not installed, the packet sniffer will gracefully degrade: it can list interfaces (NPF GUID) and optionally capture on higher-level sockets but will not do full L2 capture.
+   - To test scapy functionality, run a small snippet:
+
+```powershell
+python -c "from scapy.all import get_if_list; print(get_if_list())"
+```
+
+3. Cleaning .pyc files
+   - The repository ignores __pycache__ and .pyc. If you see tracked .pyc files, use `git rm --cached` to untrack them, then commit and push.
+
+4. Tests
+   - The repo includes a basic `tests/run_checks.py`. Run it to validate import paths and basic utilities:
+
+```powershell
+python tests/run_checks.py
+```
+
+Security and legal
+------------------
+This toolkit is educational. Avoid running intrusive scans against networks or devices you do not own or have permission to test. The included brute-force demo is intentionally local and safe: it demonstrates concepts only.
+
+Troubleshooting (common issues)
+--------------------------------
+- NameError related to mis-indentation in `toolkit.py`: ensure the `frame`, `module_frame`, and footer/button definitions are inside the `_create_module_page` method body. If you edited the file manually, re-run `python -m py_compile "Cybersecurity Toolkit\toolkit.py"` to surface syntax errors.
+
+- Scapy capture fails on Windows: install Npcap and run Python with Administrator privileges if required. Scapy's AsyncSniffer offers a safer start/stop API used by the GUI.
+
+- Missing libraries: install them via pip. The UI will show friendly messages when optional dependencies are missing.
+
+Contribution guide (quick)
+--------------------------
+- Branch from `main` or create feature branches: e.g., `git checkout -b feat/embed-web-tools`
+- Follow the module API pattern to add embeddable modules
+- Add tests under `tests/` for new features (unit + simple integration)
+- Open PRs against `main`; keep changes small and focused
+
+Commands summary (PowerShell)
+-----------------------------
+Create a venv and install requirements:
+
+```powershell
+python -m venv .venv; .\.venv\Scripts\Activate.ps1
+pip install -r "Cybersecurity Toolkit\requirements.txt"
+```
+
+Run the toolkit:
+
+```powershell
+python "Cybersecurity Toolkit\toolkit.py"
+```
+
+Run import/test checks:
+
+```powershell
+python -m py_compile "Cybersecurity Toolkit\toolkit.py"
+python -m py_compile "Cybersecurity Toolkit\modules\web_tools.py"
+python tests/run_checks.py
+```
+
+Appendix — Module feature summary
+---------------------------------
+- brute_force_demo: local-only educational demo for password cracking concepts. Safe: runs against a generated hash only.
+- encryption: hashing, PBKDF2 demo, optional Fernet symmetric encryption (requires `cryptography`).
+- port_scanner (+ core/portscanner_lib): fast socket-based port scanning utility with service name mapping.
+- vuln_scanner: non-intrusive checks (HTTP headers, robots.txt, TLS expiry) using `requests`.
+- web_tools: header inspector, robots.txt fetcher, multi-URL status checker.
+- packet_sniffer: Scapy-based capture with AsyncSniffer, interface selection, packet inspector, PCAP export (requires Npcap on Windows for full capture).
+- ml_security: ML training demo and adversarial-noise demonstration (requires scikit-learn, numpy).
+
+If you want, I can:
+- Add `create_frame(parent, on_close=None)` wrappers to specific modules so they embed directly into the toolkit UI (recommended: `web_tools`, `port_scanner`, `packet_sniffer`).
+- Commit this `USAGE_FULL.txt` to your branch and push it.
+- Create concise READMEs per module.
+
+Tell me which of these follow-ups you'd like me to do and I'll proceed.

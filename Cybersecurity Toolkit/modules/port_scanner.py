@@ -91,3 +91,70 @@ def run(on_close=None):
             on_close()
         app.protocol("WM_DELETE_WINDOW", handle_close)
     app.mainloop()
+
+
+class PortScannerFrame(ctk.CTkFrame):
+    """Embeddable frame version of Port Scanner."""
+    def __init__(self, parent, on_close=None):
+        super().__init__(parent)
+        self.on_close = on_close
+        label = ctk.CTkLabel(self, text="Port Scanner", font=("Arial", 20, "bold"))
+        label.pack(pady=12)
+
+        self.target_entry = ctk.CTkEntry(self, width=300, placeholder_text="Target IP or domain")
+        self.target_entry.pack(pady=8)
+
+        range_label = ctk.CTkLabel(self, text="Port Range (e.g. 20-80):", font=("Arial", 12))
+        range_label.pack()
+        self.range_entry = ctk.CTkEntry(self, width=300, placeholder_text="e.g. 20-80")
+        self.range_entry.pack(pady=6)
+
+        self.scan_btn = ctk.CTkButton(self, text="Scan", command=self.start_scan)
+        self.scan_btn.pack(pady=8)
+
+        self.result_box = ctk.CTkTextbox(self, width=720, height=160, font=("Consolas", 11))
+        self.result_box.pack(pady=8)
+        self.result_box.configure(state="disabled")
+
+    def start_scan(self):
+        self.result_box.configure(state="normal")
+        self.result_box.delete("1.0", ctk.END)
+        self.result_box.insert(ctk.END, "Scanning...\n")
+        self.result_box.configure(state="disabled")
+        threading.Thread(target=self.scan_ports, daemon=True).start()
+
+    def scan_ports(self):
+        target = self.target_entry.get().strip()
+        port_range = self.range_entry.get().strip()
+        try:
+            if '-' in port_range:
+                start_port, end_port = map(int, port_range.split('-'))
+            else:
+                start_port = end_port = int(port_range)
+        except Exception:
+            self.show_result("Invalid port range.")
+            return
+        result = scan_ports(target, port_start=start_port, port_end=end_port)
+        if result["error"]:
+            self.show_result(f"Error: {result['error']}")
+            return
+        output = [f"Host: {result.get('host')} ({result.get('host_ip')})"]
+        output.append(f"Scanned ports: {start_port}-{end_port}")
+        output.append(f"Scan duration: {result.get('duration')}")
+        if result.get("open_ports"):
+            output.append("\nOpen Ports:")
+            for portinfo in result["open_ports"]:
+                output.append(f"Port {portinfo['port']}: OPEN ({portinfo.get('service')})")
+        else:
+            output.append("\nNo open ports found in range.")
+        self.show_result("\n".join(output))
+
+    def show_result(self, text):
+        self.result_box.configure(state="normal")
+        self.result_box.delete("1.0", ctk.END)
+        self.result_box.insert(ctk.END, text)
+        self.result_box.configure(state="disabled")
+
+
+def create_frame(parent, on_close=None):
+    return PortScannerFrame(parent, on_close=on_close)
