@@ -12,13 +12,14 @@ import customtkinter as ctk
 
 # import shared port scanner
 try:
-    from core.portscanner_lib import scan_ports
+    from utils.portscanner_lib import scan_ports
 except Exception:
     import sys, pathlib
-    repo_root = pathlib.Path(__file__).resolve().parents[1]
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-    from core.portscanner_lib import scan_ports
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    repo_root_str = str(repo_root)
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+    from utils.portscanner_lib import scan_ports
 import requests
 
 

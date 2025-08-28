@@ -5,15 +5,17 @@ import sys
 import os
 # Use package import so static analyzers (Pylance) can resolve the module.
 try:
-    # Preferred import path for editors and when package is installed
-    from core.portscanner_lib import scan_ports
+    # Prefer the utils package path for editor static analysis
+    from utils.portscanner_lib import scan_ports
 except Exception:
-    # Fallback at runtime when running from source tree
     import sys, pathlib
-    repo_root = pathlib.Path(__file__).resolve().parents[1]
-    if str(repo_root) not in sys.path:
-        sys.path.insert(0, str(repo_root))
-    from core.portscanner_lib import scan_ports
+    # add project root (two levels up from modules/ file) so 'utils' package can be imported
+    repo_root = pathlib.Path(__file__).resolve().parents[2]
+    repo_root_str = str(repo_root)
+    # ensure the project root is on sys.path so packages like `utils` are importable
+    if repo_root_str not in sys.path:
+        sys.path.insert(0, repo_root_str)
+    from utils.portscanner_lib import scan_ports
 import customtkinter as ctk
 import threading
 
